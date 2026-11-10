@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: One row per day across the data, with the week (Monday start) and month used by the marts.
+    columns:
+      - name: date_day
+        data_tests: [unique, not_null]
+
+  - name: mart_daily_kpis
+    description: >
+      Daily headline numbers for the whole shop: sessions, users, engagement, conversion, orders and revenue.
+      Bot and internal traffic are excluded from all metrics and counted separately.
+    columns:
+      - name: date_day
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: sessions
+        description: Human, non-internal sessions that started that day.
+      - name: conversion_rate
+        description: Sessions with a purchase divided by sessions.
+      - name: revenue
+        description: Order value of real purchases that day, including shipping, excluding internal test orders.
+      - name: unattributed_revenue
+        description: Revenue from purchases that carried no session id, so no channel can be credited.
+
+  - name: mart_channel_performance
+    description: >
+      Weekly sessions, orders and revenue by channel group and campaign, joined to ad spend. Revenue is credited to the
+      source of the session that bought. Return on ad spend is revenue divided by spend.
+    columns:
+      - name: week_start
+        data_tests: [not_null]
+      - name: channel_group
+        data_tests:
+          - not_null
+      - name: return_on_ad_spend
+        description: Revenue divided by spend. Empty for channels with no spend.
+
+  - name: mart_traffic_daily
+    description: >
+      Daily sessions, engaged sessions, orders and revenue by channel group and device. Base table for the dashboard
+      filters. Orders and revenue are dated by the day the session started. That differs from mart_daily_kpis, which
+      dates a purchase when it happened, only for sessions that cross midnight; totals over the period are identical.
+    columns:
+      - name: channel_group
+        data_tests:
+          - not_null
+
+  - name: mart_ad_spend_daily
+    description: Daily ad spend by channel group and campaign, with standardised campaign names. Billing adjustments stay in.
+    columns:
+      - name: channel_group
+        data_tests:
+          - not_null
+
+  - name: mart_funnel
+    description: >
+      Daily checkout funnel by device and channel group. A session counts for a step if it reached that step or a later
+      one, so a lost tracking event cannot make a later step larger than an earlier one.
+
+  - name: mart_product_performance
+    description: One row per product with views, add-to-cart events, orders, units, revenue and gross margin.
+    columns:
+      - name: item_id
+        data_tests: [unique, not_null]
+
+  - name: mart_cohort_retention
+    description: Weekly cohorts of users by first-visit week, with the share who return in later weeks. Excludes sessions with no user id.
+
+  - name: mart_data_quality
+    description: One row per issue the pipeline found and how it was handled. The audit trail for the cleaning rules.
+    columns:
+      - name: check_name
+        data_tests: [unique, not_null]

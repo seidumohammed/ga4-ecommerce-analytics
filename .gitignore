@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+data/raw/
+data/warehouse/*
+!data/warehouse/.gitkeep
+target/
+logs/
+dbt_packages/
+*.duckdb
+*.duckdb.wal
+exports/

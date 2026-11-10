@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GA4 E-commerce Analytics Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5.30.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5.21.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.26.0"></script>
+  <style>
+    :root { --bg:#f5f3ee; --card:#ffffff; --ink:#1d2a2a; --muted:#5f6f6f; --line:#dedad0; --accent:#0f766e; --accent2:#b45309; --good:#15803d; --bad:#b91c1c; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    header { padding:18px 24px 6px; max-width:1280px; margin:0 auto; }
+    h1 { margin:0; font-size:22px; }
+    header p { margin:4px 0 0; color:var(--muted); max-width:90ch; }
+    .badge { display:inline-block; background:#fff4e0; color:#8a4b00; border:1px solid #f0d4a0; border-radius:999px; padding:2px 10px; font-size:12px; margin-left:8px; vertical-align:middle; }
+    nav a { color:var(--accent); margin-right:16px; }
+    main { max-width:1280px; margin:0 auto; padding:8px 24px 40px; }
+    .filters { display:flex; flex-wrap:wrap; gap:12px 18px; align-items:flex-end; padding:12px 0 14px; }
+    .filters label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); }
+    select, input[type=date] { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); }
+    select:focus-visible, input:focus-visible, th:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:14px; }
+    .card, .panel { background:var(--card); border:1px solid var(--line); border-radius:10px; }
+    .card { padding:12px 14px; border-top:3px solid var(--accent); }
+    .card .l { font-size:12px; color:var(--muted); }
+    .card .n { font-size:24px; font-weight:650; margin:2px 0; }
+    .card .d { font-size:12px; color:var(--muted); }
+    .up { color:var(--good); } .down { color:var(--bad); }
+    .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:14px; }
+    .panel { padding:14px 16px; }
+    .panel h2 { margin:0 0 2px; font-size:15px; }
+    .panel .sub { margin:0 0 8px; color:var(--muted); font-size:12px; }
+    .s12 { grid-column:span 12; } .s7 { grid-column:span 7; } .s5 { grid-column:span 5; } .s6 { grid-column:span 6; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { padding:6px 6px; border-bottom:1px solid var(--line); text-align:right; }
+    th:first-child, td:first-child { text-align:left; }
+    th { font-weight:600; color:var(--muted); font-size:12px; cursor:default; }
+    th.sortable { cursor:pointer; }
+    td.l, th.l { text-align:left; }
+    .scroll { overflow-x:auto; }
+    .vega-embed { display:block; width:100%; }
+    .vega-embed > svg { max-width:100%; }
+    footer { max-width:1280px; margin:0 auto; padding:0 24px 40px; color:var(--muted); font-size:12px; }
+    footer p { margin:6px 0; max-width:110ch; }
+    @media (max-width:900px) { .s7,.s5,.s6 { grid-column:span 12; } main, header, footer { padding-left:14px; padding-right:14px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GA4 E-commerce Analytics <span class="badge">Synthetic data</span></h1>
+    <p>A bronze, silver and gold pipeline on GA4-style event data for a fictional online shop, 1 October to 31 December 2025.
+       Every number on this page comes from the gold tables built and tested by dbt.</p>
+    <nav><a href="lineage/index.html">Lineage graph and model docs</a> <a href="https://github.com/seidumohammed/ga4-ecommerce-analytics">Source code</a></nav>
+  </header>
+
+  <main>
+    <section class="filters" aria-label="Filters">
+      <label>From <input type="date" id="from" /></label>
+      <label>To <input type="date" id="to" /></label>
+      <label>Channel <select id="channel"></select></label>
+      <label>Device <select id="device"></select></label>
+    </section>
+
+    <section class="cards" id="cards" aria-live="polite"></section>
+
+    <div class="grid">
+      <div class="panel s12">
+        <h2>Sessions and revenue by day</h2>
+        <p class="sub">Bars are sessions, the line is revenue. Bot and internal traffic is excluded.</p>
+        <div id="chart-daily"></div>
+      </div>
+
+      <div class="panel s7">
+        <h2>Channel performance</h2>
+        <p class="sub" id="channel-note"></p>
+        <div class="scroll"><table id="channel-table"></table></div>
+      </div>
+      <div class="panel s5">
+        <h2>Conversion rate by channel</h2>
+        <p class="sub">Sessions with a purchase divided by sessions, for the filters above.</p>
+        <div id="chart-cvr"></div>
+      </div>
+
+      <div class="panel s12">
+        <h2>Checkout funnel</h2>
+        <p class="sub">Share of sessions reaching each step. A session counts for a step if it reached that step or a later one.</p>
+        <div id="chart-funnel"></div>
+      </div>
+
+      <div class="panel s7">
+        <h2>Return visits by first-visit week</h2>
+        <p class="sub">Share of each weekly cohort that comes back in the weeks after the first visit. Sessions with no user id are left out.</p>
+        <div id="chart-cohort"></div>
+      </div>
+      <div class="panel s5">
+        <h2>What the pipeline cleaned</h2>
+        <p class="sub">Every problem found in the raw data and how it was handled.</p>
+        <div class="scroll"><table id="dq-table"></table></div>
+      </div>
+
+      <div class="panel s12">
+        <h2>Products</h2>
+        <p class="sub">Click a column to sort. Margin uses unit cost from the product catalogue. Not affected by the filters above.</p>
+        <div class="scroll"><table id="product-table"></table></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p><strong>About the data.</strong> The shop, customers, products and numbers are invented. The events follow the layout of the GA4 BigQuery export, and the
+       raw data has known problems planted on purpose (duplicates, late events, bots, internal traffic, double-fired purchases, spelling differences in
+       ad spend). Patterns such as the Black Friday peak and the mobile conversion gap were built into the generator, so they show what the
+       pipeline can surface, not what a real shop would find.</p>
+    <p><strong>Definitions.</strong> Session: a user plus a GA4 session id. Engaged session: 10 seconds of engagement, 2 page views or a purchase.
+       Conversion rate: sessions with a purchase divided by sessions. Revenue: order value including shipping, dated by the day the session started.
+       Return on ad spend: revenue divided by ad spend for the same dates.</p>
+  </footer>
+
+<script>
+const DATA_FILES = ["traffic_daily", "funnel_daily", "spend_daily", "products", "retention", "data_quality"];
+const STEPS = [["sessions", "All sessions"], ["product_view_sessions", "Viewed a product"], ["add_to_cart_sessions", "Added to cart"],
+               ["begin_checkout_sessions", "Began checkout"], ["shipping_info_sessions", "Entered shipping"], ["payment_info_sessions", "Entered payment"],
+               ["purchase_sessions", "Purchased"]];
+const $ = (id) => document.getElementById(id);
+const fmtInt = (n) => Math.round(n).toLocaleString("en-GB");
+const fmtMoney = (n) => "$" + Math.round(n).toLocaleString("en-GB");
+const fmtPct = (n, d = 1) => (100 * n).toFixed(d) + "%";
+const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); kids.forEach((k) => e.append(k)); return e; };
+const VL = { config: { font: "system-ui, sans-serif", axis: { labelColor: "#5f6f6f", titleColor: "#5f6f6f", gridColor: "#ece9e1", domainColor: "#dedad0" },
+             view: { stroke: null }, legend: { labelColor: "#1d2a2a", titleColor: "#5f6f6f" } } };
+const embed = (id, spec) => vegaEmbed("#" + id, { ...spec, ...VL, $schema: "https://vega.github.io/schema/vega-lite/v5.json", width: "container" }, { actions: false, renderer: "svg" });
+
+let D = {};
+const S = { from: "", to: "", channel: "All", device: "All" };
+
+function sum(rows, k) { return rows.reduce((a, r) => a + (r[k] || 0), 0); }
+function addDays(iso, n) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function days(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000) + 1; }
+function trafficIn(from, to) {
+  return D.traffic_daily.filter((r) => r.date_day >= from && r.date_day <= to && (S.channel === "All" || r.channel_group === S.channel) && (S.device === "All" || r.device_category === S.device));
+}
+function kpis(rows) {
+  const s = sum(rows, "sessions"), o = sum(rows, "purchases"), rev = sum(rows, "revenue");
+  return { sessions: s, orders: o, revenue: rev, conv: s ? sum(rows, "purchasing_sessions") / s : 0, aov: o ? rev / o : 0, eng: s ? sum(rows, "engaged_sessions") / s : 0 };
+}
+
+function renderCards() {
+  const cur = kpis(trafficIn(S.from, S.to));
+  const n = days(S.from, S.to), pFrom = addDays(S.from, -n), pTo = addDays(S.from, -1), minDate = D.traffic_daily[0].date_day;
+  const prev = pFrom >= minDate ? kpis(trafficIn(pFrom, pTo)) : null;
+  const delta = (a, b, pts) => {
+    if (!prev || !b) return el("div", { class: "d" }, "No earlier period in the data");
+    const diff = pts ? (a - b) * 100 : ((a - b) / b) * 100;
+    const cls = diff >= 0 ? "up" : "down";
+    return el("div", { class: "d" }, el("span", { class: cls }, (diff >= 0 ? "+" : "") + diff.toFixed(1) + (pts ? " pts" : "%")), " vs previous " + n + " days");
+  };
+  const card = (label, value, a, b, pts) => el("div", { class: "card" }, el("div", { class: "l" }, label), el("div", { class: "n" }, value), delta(a, b, pts));
+  $("cards").replaceChildren(
+    card("Sessions", fmtInt(cur.sessions), cur.sessions, prev?.sessions),
+    card("Orders", fmtInt(cur.orders), cur.orders, prev?.orders),
+    card("Revenue", fmtMoney(cur.revenue), cur.revenue, prev?.revenue),
+    card("Conversion rate", fmtPct(cur.conv, 2), cur.conv, prev?.conv, true),
+    card("Average order value", "$" + cur.aov.toFixed(2), cur.aov, prev?.aov),
+    card("Engagement rate", fmtPct(cur.eng), cur.eng, prev?.eng, true));
+}
+
+function renderDaily() {
+  const by = new Map();
+  for (const r of trafficIn(S.from, S.to)) { const x = by.get(r.date_day) || { date: r.date_day, sessions: 0, revenue: 0 }; x.sessions += r.sessions; x.revenue += r.revenue; by.set(r.date_day, x); }
+  embed("chart-daily", { height: 230, data: { values: [...by.values()] }, resolve: { scale: { y: "independent" } }, layer: [
+    { mark: { type: "bar", color: "#cfe3df" }, encoding: { x: { field: "date", type: "temporal", title: null }, y: { field: "sessions", type: "quantitative", title: "Sessions" },
+        tooltip: [{ field: "date", type: "temporal", title: "Day" }, { field: "sessions", title: "Sessions", format: "," }, { field: "revenue", title: "Revenue ($)", format: ",.0f" }] } },
+    { mark: { type: "line", color: "#b45309", strokeWidth: 2 }, encoding: { x: { field: "date", type: "temporal" }, y: { field: "revenue", type: "quantitative", title: "Revenue ($)", axis: { orient: "right", titleColor: "#b45309" } } } }] });
+}
+
+function renderChannels() {
+  const rows = trafficIn(S.from, S.to);
+  const by = {};
+  for (const r of rows) { const x = by[r.channel_group] ||= { sessions: 0, purchasing: 0, orders: 0, revenue: 0 }; x.sessions += r.sessions; x.purchasing += r.purchasing_sessions; x.orders += r.purchases; x.revenue += r.revenue; }
+  const spend = {};
+  for (const r of D.spend_daily) if (r.date_day >= S.from && r.date_day <= S.to && (S.channel === "All" || r.channel_group === S.channel)) spend[r.channel_group] = (spend[r.channel_group] || 0) + r.spend;
+  const list = Object.entries(by).sort((a, b) => b[1].revenue - a[1].revenue);
+  $("channel-note").textContent = (S.device === "All" ? "Spend follows the date range and channel." : "Spend and return on ad spend are hidden while a device is selected, because ad platforms do not report spend by device.");
+  const head = el("tr", {}, ...["Channel", "Sessions", "Conv.", "Orders", "Revenue", "Spend", "ROAS", "Cost / order"].map((h) => el("th", {}, h)));
+  const body = list.map(([name, x]) => {
+    const sp = S.device === "All" ? spend[name] || 0 : 0;
+    return el("tr", {}, el("td", {}, name), el("td", {}, fmtInt(x.sessions)), el("td", {}, fmtPct(x.sessions ? x.purchasing / x.sessions : 0, 2)), el("td", {}, fmtInt(x.orders)),
+      el("td", {}, fmtMoney(x.revenue)), el("td", {}, sp ? fmtMoney(sp) : "-"), el("td", {}, sp ? (x.revenue / sp).toFixed(2) : "-"), el("td", {}, sp && x.orders ? "$" + (sp / x.orders).toFixed(2) : "-"));
+  });
+  $("channel-table").replaceChildren(el("thead", {}, head), el("tbody", {}, ...body));
+  embed("chart-cvr", { height: 260, data: { values: list.map(([name, x]) => ({ channel: name, rate: x.sessions ? x.purchasing / x.sessions : 0, sessions: x.sessions })) },
+    mark: { type: "bar", color: "#0f766e" }, encoding: { y: { field: "channel", type: "nominal", sort: "-x", title: null },
+      x: { field: "rate", type: "quantitative", title: "Conversion rate", axis: { format: ".1%" } },
+      tooltip: [{ field: "channel", title: "Channel" }, { field: "rate", title: "Conversion rate", format: ".2%" }, { field: "sessions", title: "Sessions", format: "," }] } });
+}
+
+function renderFunnel() {
+  const rows = D.funnel_daily.filter((r) => r.date_day >= S.from && r.date_day <= S.to && (S.channel === "All" || r.channel_group === S.channel) && (S.device === "All" || r.device_category === S.device));
+  const devices = [...new Set(rows.map((r) => r.device_category))].sort();
+  const values = [];
+  for (const dev of devices) {
+    const r = rows.filter((x) => x.device_category === dev), total = sum(r, "sessions");
+    let prev = total;
+    STEPS.forEach(([k, label], i) => { const n = sum(r, k); values.push({ device: dev, step: label, order: i, share: total ? n / total : 0, count: n, fromPrev: prev ? n / prev : 0 }); prev = n; });
+  }
+  embed("chart-funnel", { height: 280, data: { values }, mark: { type: "bar" }, encoding: {
+    x: { field: "step", type: "ordinal", sort: STEPS.map((s) => s[1]), title: null, axis: { labelAngle: 0, labelLimit: 120 } },
+    y: { field: "share", type: "quantitative", title: "Share of sessions", axis: { format: "%" } },
+    xOffset: { field: "device" }, color: { field: "device", type: "nominal", title: "Device", scale: { range: ["#0f766e", "#b45309", "#7c8f8f"] } },
+    tooltip: [{ field: "device", title: "Device" }, { field: "step", title: "Step" }, { field: "count", title: "Sessions", format: "," }, { field: "share", title: "Share of all sessions", format: ".1%" }, { field: "fromPrev", title: "Share of previous step", format: ".1%" }] } });
+}
+
+function renderCohort() {
+  const values = D.retention.filter((r) => r.weeks_since_first_visit >= 1 && r.weeks_since_first_visit <= 8);
+  embed("chart-cohort", { height: 300, data: { values }, mark: { type: "rect" }, encoding: {
+    x: { field: "weeks_since_first_visit", type: "ordinal", title: "Weeks after the first visit", axis: { labelAngle: 0 } },
+    y: { field: "cohort_week", type: "ordinal", title: "Cohort (week of first visit)", sort: "ascending" },
+    color: { field: "retention_rate", type: "quantitative", title: "Returned", scale: { scheme: "tealblues" }, legend: { format: ".0%" } },
+    tooltip: [{ field: "cohort_week", title: "Cohort week" }, { field: "weeks_since_first_visit", title: "Weeks after" }, { field: "cohort_size", title: "Cohort size", format: "," }, { field: "active_users", title: "Came back", format: "," }, { field: "retention_rate", title: "Share", format: ".1%" }] } });
+}
+
+function renderDQ() {
+  const head = el("tr", {}, el("th", { class: "l" }, "Problem"), el("th", {}, "Rows"), el("th", { class: "l" }, "Handling"));
+  const body = D.data_quality.filter((r) => r.check_name !== "raw_event_rows").map((r) =>
+    el("tr", { title: r.description }, el("td", {}, r.check_name.replaceAll("_", " ")), el("td", {}, fmtInt(r.rows_affected)), el("td", { class: "l" }, r.handling)));
+  $("dq-table").replaceChildren(el("thead", {}, head), el("tbody", {}, ...body));
+}
+
+let productSort = { key: "revenue", dir: -1 };
+function renderProducts() {
+  const cols = [["item_name", "Product", "l"], ["category", "Category", "l"], ["list_price", "Price"], ["product_views", "Views"], ["add_to_cart_events", "Added to cart"], ["orders", "Orders"],
+                ["units_sold", "Units"], ["revenue", "Revenue"], ["gross_margin_rate", "Margin"]];
+  const rows = [...D.products].sort((a, b) => (a[productSort.key] > b[productSort.key] ? 1 : -1) * productSort.dir);
+  const head = el("tr", {}, ...cols.map(([k, label, cls]) => {
+    const th = el("th", { class: "sortable " + (cls || ""), tabindex: "0", role: "button", "aria-label": "Sort by " + label }, label + (productSort.key === k ? (productSort.dir < 0 ? " ▾" : " ▴") : ""));
+    const go = () => { productSort = { key: k, dir: productSort.key === k ? -productSort.dir : (cls ? 1 : -1) }; renderProducts(); };
+    th.addEventListener("click", go); th.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+    return th;
+  }));
+  const body = rows.map((r) => el("tr", {}, el("td", {}, r.item_name), el("td", { class: "l" }, r.category), el("td", {}, "$" + r.list_price.toFixed(0)), el("td", {}, fmtInt(r.product_views)),
+    el("td", {}, fmtInt(r.add_to_cart_events)), el("td", {}, fmtInt(r.orders)), el("td", {}, fmtInt(r.units_sold)), el("td", {}, fmtMoney(r.revenue)), el("td", {}, r.gross_margin_rate == null ? "-" : fmtPct(r.gross_margin_rate, 0))));
+  $("product-table").replaceChildren(el("thead", {}, head), el("tbody", {}, ...body));
+}
+
+function renderAll() { renderCards(); renderDaily(); renderChannels(); renderFunnel(); }
+
+async function init() {
+  const loaded = await Promise.all(DATA_FILES.map((n) => fetch("data/" + n + ".json").then((r) => r.json())));
+  DATA_FILES.forEach((n, i) => (D[n] = loaded[i]));
+  const dates = D.traffic_daily.map((r) => r.date_day).sort();
+  S.from = dates[0]; S.to = dates[dates.length - 1];
+  for (const id of ["from", "to"]) { $(id).min = S.from; $(id).max = S.to; }
+  $("from").value = S.from; $("to").value = S.to;
+  const fill = (id, key, all) => { const s = $(id); [...new Set(D.traffic_daily.map((r) => r[key]))].sort().forEach((v) => s.append(new Option(v, v))); s.prepend(new Option(all, "All")); s.value = "All"; };
+  fill("channel", "channel_group", "All channels"); fill("device", "device_category", "All devices");
+  $("from").addEventListener("change", (e) => { S.from = e.target.value || S.from; if (S.from > S.to) { S.to = S.from; $("to").value = S.to; } renderAll(); });
+  $("to").addEventListener("change", (e) => { S.to = e.target.value || S.to; if (S.to < S.from) { S.from = S.to; $("from").value = S.from; } renderAll(); });
+  $("channel").addEventListener("change", (e) => { S.channel = e.target.value; renderAll(); });
+  $("device").addEventListener("change", (e) => { S.device = e.target.value; renderAll(); });
+  renderAll(); renderCohort(); renderDQ(); renderProducts();
+}
+init().catch((e) => { document.querySelector("main").prepend(el("p", {}, "Could not load the data files: " + e.message)); });
+</script>
+</body>
+</html>

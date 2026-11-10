@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: bronze_ga4_events
+    description: >
+      Raw GA4 export, one row per event row in the daily files, exactly as exported (a subset of the real columns).
+      Nothing is cleaned: duplicates, late events and placeholder values are still here. Source of truth for audits.
+    columns:
+      - name: event_name
+        data_tests: [not_null]
+      - name: event_timestamp
+        description: Event time in microseconds since the Unix epoch (UTC), as in the GA4 export.
+        data_tests: [not_null]
+      - name: _source_file
+        description: The daily export file the row came from. A file dated after the event date holds late-arriving events.
+        data_tests: [not_null]
+
+  - name: bronze_marketing_spend
+    description: Daily ad spend by campaign from the ad platforms (secondary source). All columns are text.
+
+  - name: bronze_product_catalog
+    description: Product catalogue from the shop back office (secondary source). All columns are text.

@@ -1,0 +1,108 @@
+version: 2
+
+unit_tests:
+  - name: sessions_a_headless_browser_is_a_bot
+    description: A session from a headless browser is flagged as a bot and left out of valid traffic.
+    model: silver_ga4_sessions
+    given:
+      - input: ref('silver_ga4_events')
+        rows:
+          - {user_pseudo_id: 'bot1', ga_session_id: 1, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'page_view', source: 'google', medium: 'organic', browser: 'HeadlessChrome', device_category: 'desktop', is_internal: false}
+          - {user_pseudo_id: 'human1', ga_session_id: 2, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'page_view', source: 'google', medium: 'organic', browser: 'Chrome', device_category: 'desktop', is_internal: false}
+      - input: ref('silver_ga4_purchases')
+        rows:
+          - {session_key: 'unused', revenue: 0}
+    expect:
+      rows:
+        - {user_pseudo_id: 'bot1', is_bot: true, is_valid_traffic: false}
+        - {user_pseudo_id: 'human1', is_bot: false, is_valid_traffic: true}
+
+  - name: sessions_a_very_high_page_view_count_is_a_bot
+    description: A session with at least the threshold number of page views is a bot, even with a normal browser.
+    model: silver_ga4_sessions
+    overrides:
+      vars:
+        bot_page_view_threshold: 3
+    given:
+      - input: ref('silver_ga4_events')
+        rows:
+          - {user_pseudo_id: 'fast', ga_session_id: 1, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'page_view', browser: 'Chrome', is_internal: false}
+          - {user_pseudo_id: 'fast', ga_session_id: 1, ga_session_number: 1, event_ts: '2025-10-01 10:00:01', event_name: 'page_view', browser: 'Chrome', is_internal: false}
+          - {user_pseudo_id: 'fast', ga_session_id: 1, ga_session_number: 1, event_ts: '2025-10-01 10:00:02', event_name: 'page_view', browser: 'Chrome', is_internal: false}
+          - {user_pseudo_id: 'slow', ga_session_id: 2, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'page_view', browser: 'Chrome', is_internal: false}
+      - input: ref('silver_ga4_purchases')
+        rows:
+          - {session_key: 'unused', revenue: 0}
+    expect:
+      rows:
+        - {user_pseudo_id: 'fast', page_views: 3, is_bot: true}
+        - {user_pseudo_id: 'slow', page_views: 1, is_bot: false}
+
+  - name: sessions_engagement_follows_the_ga4_rule
+    description: >
+      A session is engaged after 10 seconds of engagement, or 2 page views, or a purchase. One short page view
+      is not engaged.
+    model: silver_ga4_sessions
+    given:
+      - input: ref('silver_ga4_events')
+        rows:
+          - {user_pseudo_id: 'short', ga_session_id: 1, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'page_view', engagement_time_msec: 3000, browser: 'Chrome', is_internal: false}
+          - {user_pseudo_id: 'long', ga_session_id: 2, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'page_view', engagement_time_msec: 12000, browser: 'Chrome', is_internal: false}
+          - {user_pseudo_id: 'two_pages', ga_session_id: 3, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'page_view', engagement_time_msec: 100, browser: 'Chrome', is_internal: false}
+          - {user_pseudo_id: 'two_pages', ga_session_id: 3, ga_session_number: 1, event_ts: '2025-10-01 10:00:05', event_name: 'page_view', engagement_time_msec: 100, browser: 'Chrome', is_internal: false}
+          - {user_pseudo_id: 'buyer', ga_session_id: 4, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'purchase', transaction_id: 'T-1', engagement_time_msec: 0, browser: 'Chrome', is_internal: false}
+      - input: ref('silver_ga4_purchases')
+        rows:
+          - {session_key: 'unused', revenue: 0}
+    expect:
+      rows:
+        - {user_pseudo_id: 'short', is_engaged: false}
+        - {user_pseudo_id: 'long', is_engaged: true}
+        - {user_pseudo_id: 'two_pages', is_engaged: true}
+        - {user_pseudo_id: 'buyer', is_engaged: true}
+
+  - name: sessions_channel_group_from_source_and_medium
+    description: The default channel group is worked out from source and medium, including the placeholder values.
+    model: silver_ga4_sessions
+    given:
+      - input: ref('silver_ga4_events')
+        rows:
+          - {user_pseudo_id: 'u_direct', ga_session_id: 1, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: '(direct)', medium: '(none)', is_internal: false}
+          - {user_pseudo_id: 'u_paid_search', ga_session_id: 2, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: 'google', medium: 'cpc', is_internal: false}
+          - {user_pseudo_id: 'u_paid_social', ga_session_id: 3, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: 'facebook', medium: 'paid_social', is_internal: false}
+          - {user_pseudo_id: 'u_paid_social_cpc', ga_session_id: 4, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: 'instagram', medium: 'cpc', is_internal: false}
+          - {user_pseudo_id: 'u_email', ga_session_id: 5, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: 'newsletter', medium: 'email', is_internal: false}
+          - {user_pseudo_id: 'u_organic', ga_session_id: 6, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: 'google', medium: 'organic', is_internal: false}
+          - {user_pseudo_id: 'u_organic_social', ga_session_id: 7, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: 'instagram', medium: 'social', is_internal: false}
+          - {user_pseudo_id: 'u_referral', ga_session_id: 8, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: 'blogger.example', medium: 'referral', is_internal: false}
+          - {user_pseudo_id: 'u_display', ga_session_id: 9, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: 'google', medium: 'display', is_internal: false}
+          - {user_pseudo_id: 'u_unassigned', ga_session_id: 10, ga_session_number: 1, event_ts: '2025-10-01 10:00:00', event_name: 'session_start', source: '(not set)', medium: '(not set)', is_internal: false}
+      - input: ref('silver_ga4_purchases')
+        rows:
+          - {session_key: 'unused', revenue: 0}
+    expect:
+      rows:
+        - {user_pseudo_id: 'u_direct', channel_group: 'Direct'}
+        - {user_pseudo_id: 'u_paid_search', channel_group: 'Paid Search'}
+        - {user_pseudo_id: 'u_paid_social', channel_group: 'Paid Social'}
+        - {user_pseudo_id: 'u_paid_social_cpc', channel_group: 'Paid Social'}
+        - {user_pseudo_id: 'u_email', channel_group: 'Email'}
+        - {user_pseudo_id: 'u_organic', channel_group: 'Organic Search'}
+        - {user_pseudo_id: 'u_organic_social', channel_group: 'Organic Social'}
+        - {user_pseudo_id: 'u_referral', channel_group: 'Referral'}
+        - {user_pseudo_id: 'u_display', channel_group: 'Display'}
+        - {user_pseudo_id: 'u_unassigned', channel_group: 'Unassigned'}
+
+  - name: purchases_one_row_per_transaction_even_if_the_tag_fires_twice
+    description: Two purchase events with the same transaction_id become one purchase, and the extra firing is counted.
+    model: silver_ga4_purchases
+    given:
+      - input: ref('silver_ga4_events')
+        rows:
+          - {user_pseudo_id: 'u1', ga_session_id: 1, event_ts: '2025-10-01 10:00:00', event_name: 'purchase', transaction_id: 'T-1', event_value: 50.0, shipping_value: 4.5, currency: 'USD', is_internal: false}
+          - {user_pseudo_id: 'u1', ga_session_id: 1, event_ts: '2025-10-01 10:00:02', event_name: 'purchase', transaction_id: 'T-1', event_value: 50.0, shipping_value: 4.5, currency: 'USD', is_internal: false}
+          - {user_pseudo_id: 'u2', ga_session_id: 2, event_ts: '2025-10-01 11:00:00', event_name: 'purchase', transaction_id: 'T-2', event_value: 20.0, currency: 'USD', is_internal: false}
+    expect:
+      rows:
+        - {transaction_id: 'T-1', revenue: 50.0, shipping: 4.5, events_for_transaction: 2}
+        - {transaction_id: 'T-2', revenue: 20.0, shipping: 0.0, events_for_transaction: 1}

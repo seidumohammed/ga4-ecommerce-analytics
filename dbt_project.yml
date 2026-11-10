@@ -1,0 +1,28 @@
+name: ga4_analytics
+version: "1.0.0"
+config-version: 2
+profile: ga4_analytics
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["dbt_tests"]
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  raw_path: "{{ env_var('GA4_RAW_PATH', 'data/raw') }}"
+  # Traffic from sessions with this many page views or more is treated as non-human.
+  bot_page_view_threshold: 25
+  # A session is engaged after this much engagement time, or 2 page views, or a purchase (GA4 definition).
+  engaged_ms_threshold: 10000
+
+models:
+  ga4_analytics:
+    bronze:
+      +materialized: table
+      +schema: bronze
+    silver:
+      +materialized: table
+      +schema: silver
+    gold:
+      +materialized: table
+      +schema: gold

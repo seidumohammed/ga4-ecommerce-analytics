@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate a small synthetic dataset
+        run: |
+          cd src
+          python -m ga4_synth.generate --out ../data/raw --days 30 --sessions-per-day 300
+
+      - name: Build and test the pipeline (bronze, silver, gold)
+        run: dbt build --profiles-dir .
+
+      - name: Check the pipeline found the planted problems, and test the generator
+        run: pytest -q
+
+      - name: Export the dashboard data
+        run: python src/export_dashboard_data.py

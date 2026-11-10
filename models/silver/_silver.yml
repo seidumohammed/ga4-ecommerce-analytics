@@ -1,0 +1,92 @@
+version: 2
+
+models:
+  - name: silver_ga4_events
+    description: >
+      One row per real event. GA4 parameters are flattened into columns, types are fixed, "(not set)" becomes NULL,
+      exact duplicates are removed, and late arrivals and events without a session id are flagged.
+    columns:
+      - name: event_key
+        description: Hash of user, time, event name, session, transaction and page. Identifies an event across duplicate rows.
+        data_tests: [unique, not_null]
+      - name: event_ts
+        data_tests: [not_null]
+      - name: is_late_arrival
+        description: True when the event was written to a later day's export file than its own date.
+        data_tests: [not_null]
+      - name: is_missing_session_id
+        description: True when the event has no ga_session_id, so it cannot be placed in a session.
+        data_tests: [not_null]
+
+  - name: silver_ga4_sessions
+    description: >
+      One row per session (a user plus a ga_session_id). Source, medium and campaign come from the first events of the
+      session. Engagement follows the GA4 rule: 10 seconds of engagement, 2 page views, or a purchase. Bot and internal
+      sessions are flagged here and excluded in the gold marts through is_valid_traffic.
+    columns:
+      - name: session_key
+        data_tests: [unique, not_null]
+      - name: channel_group
+        description: Default channel group worked out from source and medium by the channel_group macro.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Direct, Paid Search, Paid Social, Display, Email, Organic Search, Organic Social, Referral, Unassigned]
+      - name: session_start_ts
+        data_tests: [not_null]
+      - name: is_valid_traffic
+        description: True for human, non-internal sessions. Every gold metric uses only these.
+        data_tests: [not_null]
+
+  - name: silver_ga4_purchases
+    description: >
+      One row per real purchase. The purchase tag sometimes fires twice, so rows are deduplicated on transaction_id;
+      events_for_transaction keeps the number of firings. session_key is NULL when the event had no session id.
+    columns:
+      - name: transaction_id
+        data_tests: [unique, not_null]
+      - name: revenue
+        description: Order value including shipping, as sent in the GA4 value parameter.
+        data_tests: [not_null]
+      - name: currency
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [USD]
+
+  - name: silver_ga4_purchase_items
+    description: One row per item in a real purchase, from the deduplicated purchases.
+    columns:
+      - name: transaction_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('silver_ga4_purchases')
+                field: transaction_id
+
+  - name: silver_ga4_item_events
+    description: One row per item in a view_item or add_to_cart event, for the product funnel.
+
+  - name: silver_marketing_spend
+    description: Ad spend with typed columns and campaign names standardised to the GA4 spelling.
+    columns:
+      - name: channel_group
+        description: Channel group the ad platform maps to.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Paid Search, Paid Social, Display, Email]
+      - name: currency
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [USD]
+
+  - name: silver_products
+    description: One row per product, with the repeated catalogue row removed.
+    columns:
+      - name: item_id
+        data_tests: [unique, not_null]

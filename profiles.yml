@@ -1,0 +1,7 @@
+ga4_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('GA4_DB_PATH', 'data/warehouse/ga4.duckdb') }}"
+      threads: 4
